@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Clinic Reservation</title>
+    <style>
+        :root {
+            --bg-color: #f0f4f8;
+            --card-bg: #ffffff;
+            --primary: #4a90e2;
+            --accent: #ff6b6b;
+            --success: #2ecc71;
+            --text-main: #2c3e50;
+            --text-sub: #7f8c8d;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: env(safe-area-inset-top) 15px 40px;
+        }
+
+        .container {
+            max-width: 500px;
+            margin: 0 auto;
+        }
+
+        /* ヘッダー・切替 */
+        header { text-align: center; padding: 20px 0; }
+        .mode-switch {
+            display: flex;
+            background: #ddd;
+            border-radius: 25px;
+            padding: 4px;
+            margin-bottom: 25px;
+        }
+        .mode-switch button {
+            flex: 1;
+            border: none;
+            padding: 10px;
+            border-radius: 20px;
+            background: transparent;
+            cursor: pointer;
+            font-weight: bold;
+            transition: 0.3s;
+        }
+        .mode-switch button.active {
+            background: var(--card-bg);
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        /* 診察状況カード */
+        .status-card {
+            background: var(--card-bg);
+            border-radius: 15px;
+            padding: 25px;
+            text-align: center;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+            margin-bottom: 20px;
+        }
+        .time-now { font-size: 0.9rem; color: var(--text-sub); margin-bottom: 10px; }
+        .calling-label { font-size: 0.9rem; font-weight: bold; color: var(--primary); letter-spacing: 1px; }
+        .calling-num { font-size: 3.5rem; font-weight: 900; color: var(--accent); margin: 10px 0; }
+        .wait-time-estimate { font-size: 0.85rem; color: var(--text-sub); background: #f8f9fa; padding: 8px; border-radius: 20px; display: inline-block; }
+
+        /* 入力エリア */
+        .card {
+            background: var(--card-bg);
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+        }
+        h2 { font-size: 1.2rem; margin-top: 0; border-left: 4px solid var(--primary); padding-left: 10px; }
+        input {
+            width: 100%;
+            padding: 14px;
+            margin: 10px 0;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 1rem;
+            box-sizing: border-box;
+            background: #fafafa;
+        }
+        .main-btn {
+            width: 100%;
+            padding: 16px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(74, 144, 226, 0.3);
+            transition: 0.2s;
+        }
+        .main-btn:active { transform: scale(0.98); }
+
+        /* 受付完了表示 */
+        .my-ticket {
+            text-align: center;
+            padding: 20px;
+            border: 2px solid var(--primary);
+            border-radius: 15px;
+            background: aliceblue;
+        }
+        .ticket-num { font-size: 3rem; font-weight: bold; color: var(--primary); }
+
+        /* 管理者テーブル */
+        table { width: 100%; border-collapse: collapse; }
+        th { text-align: left; color: var(--text-sub); font-size: 0.8rem; padding: 10px; }
+        td { padding: 15px 10px; border-top: 1px solid #eee; }
+        .action-btns { display: flex; gap: 5px; }
+        .call-btn { background: var(--primary); color: white; border: none; padding: 8px; border-radius: 5px; cursor: pointer; }
+        .done-btn { background: var(--success); color: white; border: none; padding: 8px; border-radius: 5px; cursor: pointer; }
+
+        .hidden { display: none; }
+        .error-msg { color: var(--accent); font-size: 0.85rem; text-align: center; font-weight: bold; margin: 10px 0; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <div class="mode-switch">
+            <button id="btn-patient" class="active" onclick="switchMode('patient')">患者様</button>
+            <button id="btn-admin" onclick="switchMode('admin')">クリニック管理</button>
+        </div>
+    </header>
+
+    <div class="status-card">
+        <div class="time-now" id="clock">00:00:00</div>
+        <div class="calling-label">只今の診察番号</div>
+        <div class="calling-num" id="display-now-calling">--</div>
+        <div class="wait-time-estimate" id="display-wait-info">本日も診察を行っております</div>
+    </div>
+
+    <div id="view-patient" class="card">
+        <div id="reservation-form">
+            <h2>診察予約</h2>
+            <p style="font-size:0.8rem; color:var(--text-sub);">お名前と電話番号を入力してください。</p>
+            <input type="text" id="p-name" placeholder="氏名">
+            <input type="text" id="p-tel" placeholder="電話番号（数字のみ）" inputmode="numeric">
+            <div id="error-container" class="error-msg"></div>
+            <button class="main-btn" onclick="addReservation()">予約を確定する</button>
+        </div>
+
+        <div id="my-status" class="hidden">
+            <div class="my-ticket">
+                <div style="font-size:0.9rem;">あなたの受付番号</div>
+                <div class="ticket-num" id="my-num-display">-</div>
+                <hr style="border:0; border-top:1px solid #ccc; margin:15px 0;">
+                <div id="waiting-personal-msg" style="font-weight:bold;">読み込み中...</div>
+            </div>
+            <button onclick="resetView()" style="margin-top:20px; background:none; border:none; color:var(--text-sub); text-decoration:underline; cursor:pointer; width:100%;">予約をやり直す / 戻る</button>
+        </div>
+    </div>
+
+    <div id="view-admin" class="card hidden">
+        <h2>本日の中待ち合い</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>番号</th>
+                    <th>患者情報</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="admin-list"></tbody>
+        </table>
+        <div style="margin-top:40px; border-top:1px solid #eee; pt:10px;">
+            <button onclick="clearData()" style="color:var(--text-sub); font-size:0.7rem; border:none; background:none; cursor:pointer;">本日のデータをリセット</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    let patients = JSON.parse(localStorage.getItem('clinic_patients') || "[]");
+    let nowCallingNum = parseInt(localStorage.getItem('clinic_now_calling') || "0");
+    let lastFinished = parseInt(localStorage.getItem('clinic_last_finished') || "0");
+    let myNumber = null;
+
+    // 時計の更新
+    function updateClock() {
+        const now = new Date();
+        document.getElementById('clock').innerText = now.toLocaleTimeString();
+    }
+    setInterval(updateClock, 1000);
+
+    function save() {
+        localStorage.setItem('clinic_patients', JSON.stringify(patients));
+        localStorage.setItem('clinic_now_calling', nowCallingNum);
+        localStorage.setItem('clinic_last_finished', lastFinished);
+        updateDisplay();
+    }
+
+    function switchMode(mode) {
+        document.getElementById('view-patient').classList.toggle('hidden', mode !== 'patient');
+        document.getElementById('view-admin').classList.toggle('hidden', mode !== 'admin');
+        document.getElementById('btn-patient').classList.toggle('active', mode === 'patient');
+        document.getElementById('btn-admin').classList.toggle('active', mode === 'admin');
+        updateDisplay();
+    }
+
+    function addReservation() {
+        // 全角数字を半角にする優しい処理
+        let tel = document.getElementById('p-tel').value.replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
+        tel = tel.replace(/[^0-9]/g, '');
+        
+        const name = document.getElementById('p-name').value.trim();
+        const errorDiv = document.getElementById('error-container');
+        
+        if (!name || tel.length < 8) {
+            errorDiv.innerText = "正しい氏名と8桁以上の電話番号を入力してください。";
+            return;
+        }
+
+        if (patients.some(p => p.status !== 'done' && p.tel === tel)) {
+            errorDiv.innerText = "この番号は既に予約が入っています。";
+            return;
+        }
+
+        const nextNum = patients.length > 0 ? patients[patients.length - 1].num + 1 : 1;
+        patients.push({ num: nextNum, name, tel, status: 'waiting' });
+        myNumber = nextNum;
+        
+        document.getElementById('reservation-form').classList.add('hidden');
+        document.getElementById('my-status').classList.remove('hidden');
+        document.getElementById('my-num-display').innerText = myNumber;
+        save();
+    }
+
+    // 管理者が「呼出」を押した時
+    function callPatient(num) {
+        nowCallingNum = num;
+        const p = patients.find(p => p.num === num);
+        if(p) p.status = 'calling';
+        save();
+    }
+
+    // 管理者が「完了」を押した時
+    function completePatient(num) {
+        const p = patients.find(p => p.num === num);
+        if (p) {
+            p.status = 'done';
+            lastFinished = num;
+            // もし今呼んでいた人が完了したら、診察中表示をクリア
+            if(nowCallingNum === num) nowCallingNum = 0;
+            save();
+        }
+    }
+
+    function updateDisplay() {
+        // 診察中表示
+        const callingDisplay = document.getElementById('display-now-calling');
+        const waitInfo = document.getElementById('display-wait-info');
+        
+        if (nowCallingNum > 0) {
+            callingDisplay.innerText = nowCallingNum + " 番";
+        } else {
+            callingDisplay.innerText = "--";
+        }
+
+        // 全体の待ち人数から待ち時間を予測（1人5分計算）
+        const waitingCount = patients.filter(p => p.status === 'waiting' || p.status === 'calling').length;
+        waitInfo.innerText = waitingCount > 0 ? `現在 ${waitingCount} 名待ち（およそ ${waitingCount * 5} 分待ち）` : "現在、待ち時間はありません";
+
+        // 患者個別メッセージ
+        if (myNumber) {
+            const myMsg = document.getElementById('waiting-personal-msg');
+            if (nowCallingNum === myNumber) {
+                myMsg.innerHTML = "<span style='color:var(--accent)'>中待合いへお越しください！</span>";
+            } else if (lastFinished >= myNumber) {
+                myMsg.innerHTML = "<span style='color:var(--success)'>診察は終了しました。</span>";
+            } else {
+                const myWaitCount = patients.filter(p => p.status !== 'done' && p.num < myNumber).length;
+                myMsg.innerHTML = `あと <span style="font-size:1.4rem; color:var(--accent);">${myWaitCount}</span> 人待ちです`;
+            }
+        }
+
+        // 管理者用リスト
+        const list = document.getElementById('admin-list');
+        list.innerHTML = "";
+        patients.filter(p => p.status !== 'done').forEach(p => {
+            const isCalling = p.status === 'calling';
+            const tr = document.createElement('tr');
+            tr.style.background = isCalling ? "#fff0f0" : "transparent";
+            tr.innerHTML = `
+                <td><b>${p.num}</b></td>
+                <td>${p.name}<br><small>${p.tel}</small></td>
+                <td class="action-btns">
+                    ${!isCalling ? `<button class="call-btn" onclick="callPatient(${p.num})">呼出</button>` : ''}
+                    <button class="done-btn" onclick="completePatient(${p.num})">完了</button>
+                </td>
+            `;
+            list.appendChild(tr);
+        });
+    }
+
+    function resetView() {
+        myNumber = null;
+        document.getElementById('reservation-form').classList.remove('hidden');
+        document.getElementById('my-status').classList.add('hidden');
+        document.getElementById('p-name').value = "";
+        document.getElementById('p-tel').value = "";
+        updateDisplay();
+    }
+
+    function clearData() {
+        if(confirm("本日のデータをすべて消去しますか？")) {
+            patients = []; nowCallingNum = 0; lastFinished = 0; myNumber = null;
+            save(); location.reload();
+        }
+    }
+
+    window.addEventListener('storage', () => {
+        patients = JSON.parse(localStorage.getItem('clinic_patients') || "[]");
+        nowCallingNum = parseInt(localStorage.getItem('clinic_now_calling') || "0");
+        lastFinished = parseInt(localStorage.getItem('clinic_last_finished') || "0");
+        updateDisplay();
+    });
+
+    updateDisplay();
+</script>
+
+</body>
+</html>
